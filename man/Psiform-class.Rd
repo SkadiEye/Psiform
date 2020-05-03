@@ -10,12 +10,16 @@ An S4 class containing predictors (x), response (y) and sample weights (w)
 \section{Slots}{
 
 \describe{
-\item{\code{cluster}}{A numeric vector of cluster number}
+\item{\code{c}}{Phenotype values.}
 
-\item{\code{param}}{A list of parameters in the RZiMM model}
+\item{\code{beta}}{Parameters for genes.}
 
-\item{\code{importance}}{A numeric vector for the importance of each gene}
+\item{\code{u}}{U matrix.}
 
-\item{\code{info}}{A list of items, including log-likelihood, bic, and etc}
+\item{\code{v}}{V matrix.}
+
+\item{\code{sigma_sq}}{Variances of the residual terms.}
+
+\item{\code{param}}{Model parameters.}
 }}
 

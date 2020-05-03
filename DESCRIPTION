@@ -1,6 +1,7 @@
 Package: Psiform
 Type: Package
-Title: What the Package Does (Title Case)
+Title: Shared Informative Factor Models for integration of multi-platform 
+    Bioinformatic data with Pathway information incorporation
 Version: 0.1.0
 Authors@R: 
     person(given = "Xinlei",
@@ -8,9 +9,10 @@ Authors@R:
            role = c("aut", "cre"),
            email = "xm2231@cumc.columbia.edu",
            comment = c(ORCID = "0000-0002-2966-3217"))
-Maintainer: The package maintainer <yourself@somewhere.net>
-Description: More about what it does (maybe more than one line)
-    Use four spaces when indenting paragraphs within the Description.
+Description: Shared Informative Factor Models for integration of multi-platform 
+    Bioinformatic data with Pathway information incorporation. 
 License: GPL-2
 Encoding: UTF-8
 LazyData: true
+Depends: R (>= 3.0.0), methods, pracma, CVXR
+RoxygenNote: 7.1.0

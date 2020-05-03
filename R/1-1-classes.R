@@ -2,10 +2,12 @@
 #### Psiform class
 #' An S4 class containing predictors (x), response (y) and sample weights (w)
 #'
-#' @slot cluster A numeric vector of cluster number
-#' @slot param A list of parameters in the RZiMM model
-#' @slot importance A numeric vector for the importance of each gene
-#' @slot info A list of items, including log-likelihood, bic, and etc
+#' @slot c Phenotype values.
+#' @slot beta Parameters for genes.
+#' @slot u U matrix.
+#' @slot v V matrix.
+#' @slot sigma_sq Variances of the residual terms.
+#' @slot param Model parameters.
 #'
 #' @export
 setClass("Psiform",

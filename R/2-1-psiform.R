@@ -1,3 +1,38 @@
+###########################################################
+### ttsDE
+
+#' A tail-based test statistics (TTS) for differential expression detection.
+#'
+#' @param ... One or multiple matrices of expression levels from multiple platforms.
+#' @param y Subject labels.
+#' @param G Pathway information.
+#' @param dim_u Number of dimension of u.
+#' @param weight Type of weight on the pathway. Possible values include "sqrt-degree",
+#'   "none" or "degree". The default is "none".
+#' @param scale Whether to scale input matrices.
+#' @param lambda Hyper-parameters in SCAD, TLP, and L1 of phenotype differences.
+#' @param a Hyper-parameter in SCAD. Default is 3.7.
+#' @param param_init If not NULL, should be a list including c, beta, u, v and sigma_sq.
+#' @param n_iter Number of maximum iterations.
+#' @param epsilon A small number to avoid zero-denominators.
+#' @param conv_thresh Threshold for convergence.
+#' @param method Type of TLP.
+#'
+#' @return Returns a \code{Psiform} object.
+#'
+#' @importFrom CVXR Variable
+#' @importFrom CVXR Minimize
+#' @importFrom CVXR solve
+#' @importFrom CVXR Problem
+#' @importFrom pracma gramSchmidt
+#' @importFrom CVXR max_elemwise
+#' @importFrom stats na.omit
+#' @importFrom methods new
+#' @importFrom stats rnorm
+#' @importFrom stats runif
+#' @importFrom stats var
+#'
+#' @export
 psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE, lambda = NULL, a = 3.7,
                     param_init = NULL, n_iter = 100, epsilon = 10**-8, conv_thresh = 10**-6, method = 1) {
 
@@ -25,7 +60,7 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
     x_scale <- rep(1, dim(x)[2])
   }
   MTM <- diag(table(ind))
-  M <- t(sapply(ind, function(x) {y <- numeric(K); y[x] <- 1; y}))
+  M <- t(sapply(ind, function(x) {y <- numeric(k); y[x] <- 1; y}))
   if(!is.null(colnames(x))) {
     x_names <- colnames(x)
   } else {
@@ -34,13 +69,13 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
 
   if(is.null(param_init)) {
 
-    c_est <- runif(k)
+    c_est <- stats::runif(k)
     c_est <- c_est - mean(c_est[ind])
     c_est <- c_est/sqrt(sum(c_est[ind]**2))
-    beta_est <- rnorm(p_total)
-    u_est <- matrix(rnorm(dim_u*n), n, dim_u)
-    v_est <- matrix(rnorm(p_total*dim_u), p_total, dim_u)
-    sigma_sq_est <- apply(x, 2, var)
+    beta_est <- stats::rnorm(p_total)
+    u_est <- matrix(stats::rnorm(dim_u*n), n, dim_u)
+    v_est <- matrix(stats::rnorm(p_total*dim_u), p_total, dim_u)
+    sigma_sq_est <- apply(x, 2, stats::var)
 
     #### Initialization
     # n_iter0 <- 5
@@ -127,8 +162,8 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
         bg2_weight <- (1 + (abs(beta_est[G[, 2]])/W[G[, 2]] > lambda_1[G[, 1]]))/W[G[, 2]]*sign(beta_est[G[, 2]])
         obj <- CVXR::Minimize((sum(b_^2*(1/sigma_sq_est)) - 2*sum(b_*(b_w/sigma_sq_est)))/2 + sum(b_l1_weight*abs(b_)) +
                                 sum(2*lambda_2[G[, 1]]/lambda_1[G[, 1]]*
-                                      max_elemwise(abs(b_[G[, 1]])/W[G[, 1]] + max_elemwise(abs(b_[G[, 2]])/W[G[, 2]] - lambda_1[G[, 1]], 0),
-                                                   abs(b_[G[, 2]])/W[G[, 2]] + max_elemwise(abs(b_[G[, 1]])/W[G[, 1]] - lambda_1[G[, 1]], 0))) -
+                                      CVXR::max_elemwise(abs(b_[G[, 1]])/W[G[, 1]] + CVXR::max_elemwise(abs(b_[G[, 2]])/W[G[, 2]] - lambda_1[G[, 1]], 0),
+                                                   abs(b_[G[, 2]])/W[G[, 2]] + CVXR::max_elemwise(abs(b_[G[, 1]])/W[G[, 1]] - lambda_1[G[, 1]], 0))) -
                                 (sum(lambda_2[G[, 1]]/lambda_1[G[, 1]]*bg1_weight*b_[G[, 1]]/W[G[, 1]]) +
                                    sum(lambda_2[G[, 1]]/lambda_1[G[, 1]]*bg2_weight*b_[G[, 2]]/W[G[, 2]])))
       } else {
@@ -168,22 +203,14 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
       #### METHOD 2 ####
       for(j in 1:n_iter_m) {
 
-        b_mat <- abs(c_est %*% t(rep(1, K)) - rep(1, K) %*% t(c_est)) + epsilon
+        b_mat <- abs(c_est %*% t(rep(1, k)) - rep(1, k) %*% t(c_est)) + epsilon
         Q <- diag(colSums(1/b_mat)) - 1/b_mat
-        # c_est <- c(solve(t(M) %*% M*sum(beta_est**2) + 2*Q*lambda_c) %*% (t(M) %*% (x - u_est %*% t(v_est)) %*% beta_est))
-        # c_est <- c(solve(t(M) %*% M*sum(beta_est**2)) %*% t(M) %*% (x - u_est %*% t(v_est)) %*% beta_est)
-        # c_est <- c(solve(t(M) %*% M*sum(beta_est**2/sigma_sq_est) + 2*Q*lambda_c) %*%
-        #              (t(M) %*% (x - u_est %*% t(v_est)) %*% diag(1/sigma_sq_est) %*% beta_est))
         c_est <- c(solve(MTM*sum(beta_est**2/sigma_sq_est) + 2*Q*lambda_c) %*%
                      (t(M) %*% ((x - u_est %*% t(v_est)) %*% (beta_est/sigma_sq_est))))
       }
 
-      # c_est <- c
-      # c_est <- c(solve(t(M) %*% M*sum(beta_est**2)) %*% (t(M) %*% (x - u_est %*% t(v_est)) %*% beta_est))
-
-      # u_est <- (x - c_est[ind] %*% t(beta_est)) %*% v_est %*% solve(t(v_est) %*% v_est)
       u_est <- ((x - c_est[ind] %*% t(beta_est)) / (rep(1, n) %*% t(sigma_sq_est))) %*% v_est %*%
-        solve(t(v_est) %*% (v_est / (sigma_sq_est %*% t(rep(1, d0)))))
+        solve(t(v_est) %*% (v_est / (sigma_sq_est %*% t(rep(1, dim_u)))))
 
       ## Gram–Schmidt process
       c_est <- c_est - mean(c_est[ind])
@@ -208,8 +235,6 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
               Q0[c(G0[sss, 1], G0[sss, 2]), c(G0[sss, 1], G0[sss, 2])] +
               matrix(c(1/W[G0[sss, 1]]**2, -1/W[G0[sss, 1]]/W[G0[sss, 2]],
                        -1/W[G0[sss, 1]]/W[G0[sss, 2]], 1/W[G0[sss, 2]]**2), 2, 2)*(1/c0[G0[sss, 1], G0[sss, 2]])
-          # beta_est <- c(solve(diag(p) + 2*diag(b_l1_weight/b0) + 2*Q0*lambda_2) %*% t(x - u_est %*% t(v_est)) %*% c_est[ind])
-          # beta_est <- c(t(x - u_est %*% t(v_est)) %*% c_est[ind])
           beta_est <- c(solve(diag(1/sigma_sq_est) + 2*diag(b_l1_weight/b0) + 2*Q0*lambda_2) %*%
                           ((t(x - u_est %*% t(v_est)) %*% c_est[ind])/sigma_sq_est))
         } else {
@@ -219,7 +244,6 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
         }
       }
 
-      # v_est <- t(x - c_est[ind] %*% t(beta_est)) %*% u_est
       v_est <- t(x - c_est[ind] %*% t(beta_est)) %*% u_est
       sigma_sq_est <- colMeans((x - c_est[ind] %*% t(beta_est) - u_est %*% t(v_est))**2)
 
@@ -255,9 +279,10 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
   names(c_est) <- y_label
   names(beta_est) <- x_names
 
-  return(new("Psiform", c = c_est, beta = beta_est, u = u_est, v = v_est, sigma_sq = sigma_sq_est,
-             param = list(is.null.G = is.null(G), dim_u = dim_u, weight = weight,
-                          scale = scale, lambda = lambda, a = a, n_iter = n_iter,
-                          epsilon = epsilon, conv_thresh = conv_thresh, method = method,
-                          x_scale = x_scale, x_center = x_center, log_lik = na.omit(loglik_), loss = na.omit(loss_))))
+  return(methods::new("Psiform", c = c_est, beta = beta_est, u = u_est, v = v_est, sigma_sq = sigma_sq_est,
+                      param = list(is.null.G = is.null(G), dim_u = dim_u, weight = weight,
+                                   scale = scale, lambda = lambda, a = a, n_iter = n_iter,
+                                   epsilon = epsilon, conv_thresh = conv_thresh, method = method,
+                                   x_scale = x_scale, x_center = x_center, log_lik = stats::na.omit(loglik_),
+                                   loss = na.omit(loss_))))
 }
