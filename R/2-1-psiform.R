@@ -1,7 +1,8 @@
 ###########################################################
-### ttsDE
+### Psiform
 
-#' A tail-based test statistics (TTS) for differential expression detection.
+#' Shared Informative Factor Models for integration of multi-platform
+#'   Bioinformatic data with Pathway information incorporation
 #'
 #' @param ... One or multiple matrices of expression levels from multiple platforms.
 #' @param y Subject labels.
@@ -33,7 +34,8 @@
 #' @importFrom stats var
 #'
 #' @export
-psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE, lambda = NULL, a = 3.7,
+psiform <- function(..., y, normal_label = levels(y)[length(levels(y))],
+                    G = NULL, dim_u = 5, weight = "none", scale = FALSE, lambda = NULL, a = 3.7,
                     param_init = NULL, n_iter = 100, epsilon = 10**-8, conv_thresh = 10**-6, method = 1) {
 
   mat_list <- list(...)
@@ -66,6 +68,11 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
   } else {
     x_names <- paste0("V", 1:p_total)
   }
+
+  ind_normal <- match(normal_label, y_label)
+  ind_tumor <- (1:k)[-ind_normal]
+  n_normal <- length(ind_normal)
+  n_tumor <- k - n_normal
 
   if(is.null(param_init)) {
 
@@ -136,8 +143,17 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
     if(method == 1) {
 
       #### METHOD 1 ####
-      b_mat <- abs(c_est %*% t(rep(1, k)) - rep(1, k) %*% t(c_est)) + epsilon
-      Q <- diag(colSums(1/b_mat)) - 1/b_mat
+      Q <- matrix(0, k, k)
+      if(n_tumor > 1) {
+        b1_mat <- abs(c_est[ind_tumor] %*% t(rep(1, n_tumor)) - rep(1, n_tumor) %*% t(c_est[ind_tumor])) + epsilon
+        Q[ind_tumor, ind_tumor] <- diag(colSums(1/b1_mat)) - 1/b1_mat
+      }
+      if(n_normal > 1) {
+        b2_mat <- abs(c_est[ind_normal] %*% t(rep(1, n_normal)) - rep(1, n_normal) %*% t(c_est[ind_normal])) + epsilon
+        Q[ind_normal, ind_normal] <- diag(colSums(1/b2_mat)) - 1/b2_mat
+      }
+      # b_mat <- abs(c_est %*% t(rep(1, k)) - rep(1, k) %*% t(c_est)) + epsilon
+      # Q <- diag(colSums(1/b_mat)) - 1/b_mat
       c_est <- c(solve(MTM*sum(beta_est**2/sigma_sq_est) + 2*Q*lambda_c) %*%
                    (t(M) %*% ((x - u_est %*% t(v_est)) %*% (beta_est/sigma_sq_est))))
 
@@ -146,8 +162,11 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
 
       ## Gram–Schmidt process
       c_est <- c_est - mean(c_est[ind])
-      c_est <- c_est / sqrt(sum((c_est[ind])**2))
-      u_est <- pracma::gramSchmidt(cbind(c_est[ind], u_est))$Q[, -1]
+      c_est <- c_est / sqrt(mean((c_est[ind])**2))
+      u_est <- apply(u_est, 2, function(z) z - c_est[ind]*sum(z*c_est[ind])/sum(c_est[ind]**2))
+      u_est <- pracma::gramSchmidt(u_est)$Q
+      # u_est <- (u_est - rep(1, n) %*% t(colMeans(u_est)))/(rep(1, n) %*% t(apply(u_est, 2, function(z) sqrt(sum((z - mean(z))**2)))))
+      # u_est <- M[, -k]
 
       b_ <- CVXR::Variable(p_total)
       x_res <- x - u_est %*% t(v_est)
@@ -160,7 +179,7 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
         # browser()
         bg1_weight <- (1 + (abs(beta_est[G[, 1]])/W[G[, 1]] > lambda_1[G[, 1]]))/W[G[, 1]]*sign(beta_est[G[, 1]])
         bg2_weight <- (1 + (abs(beta_est[G[, 2]])/W[G[, 2]] > lambda_1[G[, 1]]))/W[G[, 2]]*sign(beta_est[G[, 2]])
-        obj <- CVXR::Minimize((sum(b_^2*(1/sigma_sq_est)) - 2*sum(b_*(b_w/sigma_sq_est)))/2 + sum(b_l1_weight*abs(b_)) +
+        obj <- CVXR::Minimize((sum(b_^2*(1/sigma_sq_est))*n - 2*sum(b_*(b_w/sigma_sq_est)))/2 + sum(b_l1_weight*abs(b_)) +
                                 sum(2*lambda_2[G[, 1]]/lambda_1[G[, 1]]*
                                       CVXR::max_elemwise(abs(b_[G[, 1]])/W[G[, 1]] + CVXR::max_elemwise(abs(b_[G[, 2]])/W[G[, 2]] - lambda_1[G[, 1]], 0),
                                                    abs(b_[G[, 2]])/W[G[, 2]] + CVXR::max_elemwise(abs(b_[G[, 1]])/W[G[, 1]] - lambda_1[G[, 1]], 0))) -
@@ -168,7 +187,7 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
                                    sum(lambda_2[G[, 1]]/lambda_1[G[, 1]]*bg2_weight*b_[G[, 2]]/W[G[, 2]])))
       } else {
 
-        obj <- CVXR::Minimize((sum(b_^2*(1/sigma_sq_est)) - 2*sum(b_*(b_w/sigma_sq_est)))/2 + sum(b_l1_weight*abs(b_)))
+        obj <- CVXR::Minimize((sum(b_^2*(1/sigma_sq_est))*n - 2*sum(b_*(b_w/sigma_sq_est)))/2 + sum(b_l1_weight*abs(b_)))
       }
 
       sol <- CVXR::solve(CVXR::Problem(obj))
@@ -203,8 +222,17 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
       #### METHOD 2 ####
       for(j in 1:n_iter_m) {
 
-        b_mat <- abs(c_est %*% t(rep(1, k)) - rep(1, k) %*% t(c_est)) + epsilon
-        Q <- diag(colSums(1/b_mat)) - 1/b_mat
+        Q <- matrix(0, k, k)
+        if(n_tumor > 1) {
+          b1_mat <- abs(c_est[ind_tumor] %*% t(rep(1, n_tumor)) - rep(1, n_tumor) %*% t(c_est[ind_tumor])) + epsilon
+          Q[ind_tumor, ind_tumor] <- diag(colSums(1/b1_mat)) - 1/b1_mat
+        }
+        if(n_normal > 1) {
+          b2_mat <- abs(c_est[ind_normal] %*% t(rep(1, n_normal)) - rep(1, n_normal) %*% t(c_est[ind_normal])) + epsilon
+          Q[ind_normal, ind_normal] <- diag(colSums(1/b2_mat)) - 1/b2_mat
+        }
+        # b_mat <- abs(c_est %*% t(rep(1, k)) - rep(1, k) %*% t(c_est)) + epsilon
+        # Q <- diag(colSums(1/b_mat)) - 1/b_mat
         c_est <- c(solve(MTM*sum(beta_est**2/sigma_sq_est) + 2*Q*lambda_c) %*%
                      (t(M) %*% ((x - u_est %*% t(v_est)) %*% (beta_est/sigma_sq_est))))
       }
@@ -214,14 +242,21 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
 
       ## Gram–Schmidt process
       c_est <- c_est - mean(c_est[ind])
-      c_est <- c_est / sqrt(sum((c_est[ind])**2))
-      u_est <- pracma::gramSchmidt(cbind(c_est[ind], u_est))$Q[, -1]
+      c_est <- c_est / sqrt(mean((c_est[ind])**2))
+      u_est <- apply(u_est, 2, function(z) z - c_est[ind]*sum(z*c_est[ind])/sum(c_est[ind]**2))
+      u_est <- pracma::gramSchmidt(u_est)$Q
+      # u_est <- pracma::gramSchmidt(cbind(c_est[ind], u_est))$Q[, -1]
+      # u_est <- (u_est - rep(1, n) %*% t(colMeans(u_est)))/(rep(1, n) %*% t(apply(u_est, 2, function(z) sqrt(sum((z - mean(z))**2)))))
+      # u_est <- M[, -k]
 
       # browser()
       b_l1_weight <- lambda_1*((abs(beta_est) <= lambda_1) +
                                  (a*lambda_1 - abs(beta_est))*(abs(beta_est) > lambda_1)*(abs(beta_est) < a*lambda_1)/(a-1))
-      ind_G <- apply(cbind(G, lambda_1[G[, 1]]), 1, function(z) abs(beta_est[z[1]]/W[z[1]] - beta_est[z[2]/W[z[2]]]) <= z[3])
-      G0 <- G[ind_G, ]
+      if(!is.null(G)) {
+
+        ind_G <- apply(cbind(G, lambda_1[G[, 1]]), 1, function(z) abs(beta_est[z[1]]/W[z[1]] - beta_est[z[2]/W[z[2]]]) <= z[3])
+        G0 <- G[ind_G, ]
+      }
 
       for(j in 1:n_iter_m) {
 
@@ -235,11 +270,11 @@ psiform <- function(..., y, G = NULL, dim_u = 5, weight = "none", scale = FALSE,
               Q0[c(G0[sss, 1], G0[sss, 2]), c(G0[sss, 1], G0[sss, 2])] +
               matrix(c(1/W[G0[sss, 1]]**2, -1/W[G0[sss, 1]]/W[G0[sss, 2]],
                        -1/W[G0[sss, 1]]/W[G0[sss, 2]], 1/W[G0[sss, 2]]**2), 2, 2)*(1/c0[G0[sss, 1], G0[sss, 2]])
-          beta_est <- c(solve(diag(1/sigma_sq_est) + 2*diag(b_l1_weight/b0) + 2*Q0*lambda_2) %*%
+          beta_est <- c(solve(diag(1/sigma_sq_est)*n + 2*diag(b_l1_weight/b0) + 2*Q0*lambda_2) %*%
                           ((t(x - u_est %*% t(v_est)) %*% c_est[ind])/sigma_sq_est))
         } else {
 
-          beta_est <- c(solve(diag(1/sigma_sq_est) + 2*diag(b_l1_weight/b0)) %*%
+          beta_est <- c(solve(diag(1/sigma_sq_est)*n + 2*diag(b_l1_weight/b0)) %*%
                           ((t(x - u_est %*% t(v_est)) %*% c_est[ind])/sigma_sq_est))
         }
       }
